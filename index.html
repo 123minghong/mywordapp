@@ -211,6 +211,7 @@
       document.getElementById("page-info").innerText = `第 ${currentPage} 页 / 共 ${totalPages} 页`;
       document.getElementById("pagination-controls").style.display = allWords.length > perPage ? "block" : "none";
     }
+    window.loadWords = loadWords;
   </script>
 </head>
 <body>
