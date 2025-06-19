@@ -116,7 +116,7 @@
       list.innerHTML = "加载中...";
       const q = query(
         collection(db, "users", userId, "wordbooks", bookId, "words"),
-        orderBy("createdAt", "asc")
+        orderBy("createdAt", "desc")
       );
       onSnapshot(q, snap => {
         allWords = [];
