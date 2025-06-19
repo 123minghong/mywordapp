@@ -109,22 +109,37 @@
     }
 
     document.getElementById("addBtn").onclick = async () => {
-      const word = document.getElementById("word").value.trim();
-      const meaning = document.getElementById("meaning").value.trim();
-      if (!word || !meaning || !currentBookId) return alert("请填写完整，并选择单词本");
-      const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
-      const data = await res.json();
-      const phonetic = data[0].phonetic || (data[0].phonetics[0] || {}).text || '';
-      const audio = (data[0].phonetics.find(p => p.audio) || {}).audio || "";
-      await addDoc(collection(db, "users", userId, "wordbooks", currentBookId, "words"), {
-        text: word,
-        meaning,
-        phonetic,
-        audio: audio.startsWith('//') ? 'https:' + audio : audio
-      });
-      document.getElementById("word").value = "";
-      document.getElementById("meaning").value = "";
-    };
+  const word = document.getElementById("word").value.trim();
+  const meaning = document.getElementById("meaning").value.trim();
+  if (!word || !meaning || !currentBookId) return alert("请填写完整，并选择单词本");
+
+  let phonetic = '';
+  let audio = '';
+  let audioNotice = '';
+
+  try {
+    const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
+    if (!res.ok) throw new Error("词典查询失败");
+    const data = await res.json();
+    phonetic = data[0].phonetic || (data[0].phonetics[0] || {}).text || '';
+    audio = (data[0].phonetics.find(p => p.audio) || {}).audio || '';
+    if (!phonetic && !audio) {
+      alert("⚠️ 获取不到音标和发音，仍将保存单词");
+    }
+  } catch (err) {
+    alert("⚠️ 查询词典失败，可能拼写错误或网络问题，仍将保存单词");
+  }
+
+  await addDoc(collection(db, "users", userId, "wordbooks", currentBookId, "words"), {
+    text: word,
+    meaning,
+    phonetic,
+    audio: audio.startsWith('//') ? 'https:' + audio : audio
+  });
+
+  document.getElementById("word").value = "";
+  document.getElementById("meaning").value = "";
+};
 
     window.deleteWord = async function(id) {
       await deleteDoc(doc(db, "users", userId, "wordbooks", currentBookId, "words", id));
