@@ -24,6 +24,12 @@
     }
     #login-area {
       margin-bottom: 1em;
+      display: flex;
+      align-items: center;
+      gap: 1em;
+    }
+    #login-status {
+      margin: 0;
     }
   </style>
   <script type="module">
@@ -196,12 +202,12 @@
         const div = document.createElement("div");
         div.className = "card";
         div.innerHTML = `
-          <div style='display:flex;justify-content:space-between;align-items:center;'>
+          <div style='display:flex;align-items:center;gap:0.5em;'>
             <b>${w.text}</b>
+            <span style="color:gray;font-weight:normal;">${w.phonetic || ''}</span>
             <button onclick="document.getElementById('a-${docSnap.id}').play()">🔊</button>
             <audio id="a-${docSnap.id}" src="${w.audio}"></audio>
           </div>
-          <div style='color:gray;'>${w.phonetic || ''}</div>
           <div>释义：${w.meaning}</div>
           <button onclick="deleteWord('${docSnap.id}')">删除</button>
         `;
@@ -215,7 +221,7 @@
   </script>
 </head>
 <body>
-  <h2>🧠 我的单词本（Google 登录 + 云同步）</h2>
+  <h2>🧠 我的单词本</h2>
   <div id="login-area">
     <p id="login-status">登录检测中...</p>
     <button id="loginBtn">使用 Google 登录</button>
