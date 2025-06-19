@@ -1,69 +1,221 @@
-<!-- 保留已有功能 -->
-<!-- 添加分页控制区域 -->
-<div id="pagination-controls" style="margin-top: 1em; display: none; text-align: center;">
-  <button onclick="prevPage()">上一页</button>
-  <span id="page-info"></span>
-  <button onclick="nextPage()">下一页</button>
-  <br><br>
-  每页显示：
-  <select id="perPageSelect" onchange="updatePerPage()">
-    <option value="5">5</option>
-    <option value="10" selected>10</option>
-    <option value="20">20</option>
-  </select>
-</div>
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>云同步单词本</title>
+  <style>
+    body { font-family: sans-serif; padding: 1em; background: #f6f6f6; }
+    .card {
+      background: white; margin: 0.5em 0; padding: 1em; border-radius: 8px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.1);
+    }
+    button { padding: 0.4em 1em; margin: 0.3em; font-size: 14px; }
+    #login-area { margin-bottom: 1em; }
+  </style>
+  <!-- 引入 Firebase SDK 模块 -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, collection, doc, addDoc, getDocs, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-<!-- 单词列表容器 -->
-<div id="word-list"></div>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCpvG54UwNFw--aZxCOu1VBKNX-saQsgl0",
+      authDomain: "mywordapp-411d4.firebaseapp.com",
+      projectId: "mywordapp-411d4",
+      storageBucket: "mywordapp-411d4.firebasestorage.app",
+      messagingSenderId: "189418628590",
+      appId: "1:189418628590:web:80a13a63e35302db5fdaff"
+    };
 
-<script>
-let allWords = [];
-let currentPage = 1;
-let perPage = 10;
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth();
+    const provider = new GoogleAuthProvider();
 
-function updatePerPage() {
-  perPage = parseInt(document.getElementById("perPageSelect").value);
-  currentPage = 1;
-  renderPagedWords();
-}
+    let userId = null;
+    let currentBookId = null;
+    let allWords = [];
+    let currentPage = 1;
+    let perPage = 10;
 
-function prevPage() {
-  if (currentPage > 1) {
-    currentPage--;
-    renderPagedWords();
-  }
-}
+    onAuthStateChanged(auth, async (user) => {
+      const status = document.getElementById("login-status");
+      const loginBtn = document.getElementById("loginBtn");
+      const logoutBtn = document.getElementById("logoutBtn");
 
-function nextPage() {
-  const totalPages = Math.ceil(allWords.length / perPage);
-  if (currentPage < totalPages) {
-    currentPage++;
-    renderPagedWords();
-  }
-}
+      if (user) {
+        userId = user.uid;
+        status.innerText = `✅ 已登录：${user.displayName || user.email}`;
+        loginBtn.style.display = "none";
+        logoutBtn.style.display = "inline-block";
+        await loadWordbooks();
+      } else {
+        userId = null;
+        status.innerText = "❌ 未登录";
+        loginBtn.style.display = "inline-block";
+        logoutBtn.style.display = "none";
+        document.getElementById("wordbook-list").innerHTML = "";
+        document.getElementById("active-book").innerText = "📘 当前单词本：";
+        document.getElementById("word-list").innerHTML = "";
+      }
+    });
 
-function renderPagedWords() {
-  const list = document.getElementById("word-list");
-  list.innerHTML = "";
-  const start = (currentPage - 1) * perPage;
-  const pageWords = allWords.slice(start, start + perPage);
-  pageWords.forEach(({ docSnap, w }) => {
-    const div = document.createElement("div");
-    div.className = "card";
-    div.innerHTML = `
-      <div style='display:flex;justify-content:space-between;'>
-        <b>${w.text}</b>
-        <button onclick="document.getElementById('a-${docSnap.id}').play()">🔊</button>
-        <audio id="a-${docSnap.id}" src="${w.audio}"></audio>
-      </div>
-      <div style='color:gray;'>${w.phonetic || ''}</div>
-      <div>释义：${w.meaning}</div>
-      <button onclick="deleteWord('${docSnap.id}')">删除</button>
-    `;
-    list.appendChild(div);
-  });
-  const totalPages = Math.ceil(allWords.length / perPage);
-  document.getElementById("page-info").innerText = `第 ${currentPage} 页 / 共 ${totalPages} 页`;
-  document.getElementById("pagination-controls").style.display = allWords.length > perPage ? "block" : "none";
-}
-</script>
+    document.getElementById("loginBtn").onclick = async () => {
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (err) {
+        alert("登录失败：" + err.message);
+      }
+    };
+
+    document.getElementById("logoutBtn").onclick = () => {
+      signOut(auth);
+    };
+
+    async function loadWordbooks() {
+      const snap = await getDocs(collection(db, "users", userId, "wordbooks"));
+      const list = document.getElementById("wordbook-list");
+      list.innerHTML = "";
+      snap.forEach(docSnap => {
+        const div = document.createElement("div");
+        div.innerHTML = `<button onclick="loadWords('${docSnap.id}', '${docSnap.data().name}')">📘 ${docSnap.data().name}</button>`;
+        list.appendChild(div);
+      });
+    }
+
+    document.getElementById("createBookBtn").onclick = async () => {
+      const name = prompt("请输入单词本名称：");
+      if (!name) return;
+      await addDoc(collection(db, "users", userId, "wordbooks"), { name });
+      loadWordbooks();
+    };
+
+    function loadWords(bookId, name) {
+      currentBookId = bookId;
+      document.getElementById("active-book").innerText = `📘 当前单词本：${name}`;
+      const list = document.getElementById("word-list");
+      list.innerHTML = "加载中...";
+      const q = collection(db, "users", userId, "wordbooks", bookId, "words");
+      onSnapshot(q, snap => {
+        allWords = [];
+        snap.forEach(docSnap => {
+          const w = docSnap.data();
+          allWords.push({ docSnap, w });
+        });
+        currentPage = 1;
+        renderPagedWords();
+      });
+    }
+
+    document.getElementById("addBtn").onclick = async () => {
+      const word = document.getElementById("word").value.trim();
+      const meaning = document.getElementById("meaning").value.trim();
+      if (!word || !meaning || !currentBookId) return alert("请填写完整，并选择单词本");
+      const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
+      const data = await res.json();
+      const phonetic = data[0].phonetic || (data[0].phonetics[0] || {}).text || '';
+      const audio = (data[0].phonetics.find(p => p.audio) || {}).audio || "";
+      await addDoc(collection(db, "users", userId, "wordbooks", currentBookId, "words"), {
+        text: word,
+        meaning,
+        phonetic,
+        audio: audio.startsWith('//') ? 'https:' + audio : audio
+      });
+      document.getElementById("word").value = "";
+      document.getElementById("meaning").value = "";
+    };
+
+    window.deleteWord = async function(id) {
+      await deleteDoc(doc(db, "users", userId, "wordbooks", currentBookId, "words", id));
+    };
+
+    window.loadWords = loadWords;
+
+    window.updatePerPage = function () {
+      perPage = parseInt(document.getElementById("perPageSelect").value);
+      currentPage = 1;
+      renderPagedWords();
+    };
+
+    window.prevPage = function () {
+      if (currentPage > 1) {
+        currentPage--;
+        renderPagedWords();
+      }
+    };
+
+    window.nextPage = function () {
+      const totalPages = Math.ceil(allWords.length / perPage);
+      if (currentPage < totalPages) {
+        currentPage++;
+        renderPagedWords();
+      }
+    };
+
+    function renderPagedWords() {
+      const list = document.getElementById("word-list");
+      list.innerHTML = "";
+      const start = (currentPage - 1) * perPage;
+      const pageWords = allWords.slice(start, start + perPage);
+      pageWords.forEach(({ docSnap, w }) => {
+        const div = document.createElement("div");
+        div.className = "card";
+        div.innerHTML = `
+          <div style='display:flex;justify-content:space-between;'>
+            <b>${w.text}</b>
+            <button onclick="document.getElementById('a-${docSnap.id}').play()">🔊</button>
+            <audio id="a-${docSnap.id}" src="${w.audio}"></audio>
+          </div>
+          <div style='color:gray;'>${w.phonetic || ''}</div>
+          <div>释义：${w.meaning}</div>
+          <button onclick="deleteWord('${docSnap.id}')">删除</button>
+        `;
+        list.appendChild(div);
+      });
+      const totalPages = Math.ceil(allWords.length / perPage);
+      document.getElementById("page-info").innerText = `第 ${currentPage} 页 / 共 ${totalPages} 页`;
+      document.getElementById("pagination-controls").style.display = allWords.length > perPage ? "block" : "none";
+    }
+  </script>
+</head>
+<body>
+  <h2>🧠 我的单词本（Google 登录 + 云同步）</h2>
+
+  <div id="login-area">
+    <p id="login-status">登录检测中...</p>
+    <button id="loginBtn">使用 Google 登录</button>
+    <button id="logoutBtn" style="display:none">登出</button>
+  </div>
+
+  <div>
+    <h3>📁 我的单词本</h3>
+    <div id="wordbook-list"></div>
+    <button id="createBookBtn">➕ 创建新单词本</button>
+  </div>
+
+  <hr>
+
+  <h3 id="active-book">📘 当前单词本：</h3>
+  <input id="word" placeholder="英文单词">
+  <input id="meaning" placeholder="中文释义">
+  <button id="addBtn">添加单词</button>
+
+  <!-- 分页控制 -->
+  <div id="pagination-controls" style="margin-top: 1em; display: none; text-align: center;">
+    <button onclick="prevPage()">上一页</button>
+    <span id="page-info"></span>
+    <button onclick="nextPage()">下一页</button>
+    <br><br>
+    每页显示：
+    <select id="perPageSelect" onchange="updatePerPage()">
+      <option value="5">5</option>
+      <option value="10" selected>10</option>
+      <option value="20">20</option>
+    </select>
+  </div>
+
+  <!-- 单词列表容器 -->
+  <div id="word-list"></div>
+</body>
+</html>
