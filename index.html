@@ -98,15 +98,21 @@
     };
 
     async function loadWordbooks() {
-      const snap = await getDocs(collection(db, "users", userId, "wordbooks"));
-      const list = document.getElementById("wordbook-list");
-      list.innerHTML = "";
-      snap.forEach(docSnap => {
-        const div = document.createElement("div");
-        div.innerHTML = `<button onclick="loadWords('${docSnap.id}', '${docSnap.data().name}')">📘 ${docSnap.data().name}</button>`;
-        list.appendChild(div);
-      });
-    }
+  const snap = await getDocs(collection(db, "users", userId, "wordbooks"));
+  const list = document.getElementById("wordbook-list");
+  const createBtn = document.getElementById("createBookBtn");
+
+  list.innerHTML = ""; // 清空原内容
+
+  snap.forEach(docSnap => {
+    const div = document.createElement("div");
+    div.innerHTML = `<button onclick="loadWords('${docSnap.id}', '${docSnap.data().name}')">📘 ${docSnap.data().name}</button>`;
+    list.appendChild(div); // 插入每个单词本
+  });
+
+  list.appendChild(createBtn); // ✅ 最后插入“创建按钮”
+}
+
 
     document.getElementById("createBookBtn").onclick = async () => {
       const name = prompt("请输入单词本名称：");
@@ -202,15 +208,17 @@
         const div = document.createElement("div");
         div.className = "card";
         div.innerHTML = `
-          <div style='display:flex;align-items:center;gap:0.5em;'>
-            <b>${w.text}</b>
-            <span style="color:gray;font-weight:normal;">${w.phonetic || ''}</span>
-            <button onclick="document.getElementById('a-${docSnap.id}').play()">🔊</button>
-            <audio id="a-${docSnap.id}" src="${w.audio}"></audio>
-          </div>
-          <div>释义：${w.meaning}</div>
-          <button onclick="deleteWord('${docSnap.id}')">删除</button>
-        `;
+      <div style='display:flex;align-items:center;gap:0.5em;justify-content:space-between;'>
+        <div style="display:flex;align-items:center;gap:0.5em;">
+          <b>${w.text}</b>
+          <span style="color:gray;font-weight:normal;">${w.phonetic || ''}</span>
+          <button onclick="document.getElementById('a-${docSnap.id}').play()">🔊</button>
+          <audio id="a-${docSnap.id}" src="${w.audio}"></audio>
+        </div>
+        <button onclick="deleteWord('${docSnap.id}')">删除</button>
+      </div>
+      <div>${w.meaning}</div>
+    `;
         list.appendChild(div);
       });
       const totalPages = Math.ceil(allWords.length / perPage);
@@ -228,10 +236,11 @@
     <button id="logoutBtn" style="display:none">登出</button>
   </div>
   <div>
-    <h3>📁 我的单词本</h3>
-    <div id="wordbook-list"></div>
+  <h3>📁 我的单词本</h3>
+  <div id="wordbook-list">
     <button id="createBookBtn">➕ 创建新单词本</button>
   </div>
+</div>
   <hr>
   <h3 id="active-book">📘 当前单词本：</h3>
   <input id="word" placeholder="英文单词">
