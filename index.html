@@ -31,6 +31,12 @@
     #login-status {
       margin: 0;
     }
+    #wordbook-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  align-items: center;
+}
   </style>
   <script type="module">
     import {
@@ -107,10 +113,10 @@
   snap.forEach(docSnap => {
     const div = document.createElement("div");
     div.innerHTML = `<button onclick="loadWords('${docSnap.id}', '${docSnap.data().name}')">📘 ${docSnap.data().name}</button>`;
-    list.appendChild(div); // 插入每个单词本
+    list.appendChild(div);
   });
 
-  list.appendChild(createBtn); // ✅ 最后插入“创建按钮”
+  list.appendChild(createBtn); // 始终放在最后
 }
 
 
@@ -237,8 +243,10 @@
   </div>
   <div>
   <h3>📁 我的单词本</h3>
-  <div id="wordbook-list"></div>
-  <button id="createBookBtn">➕ 创建新单词本</button>
+  <div id="wordbook-list">
+    <!-- 单词本按钮和创建按钮都在这里 -->
+    <button id="createBookBtn">➕ 创建新单词本</button>
+  </div>
 </div>
   <hr>
   <h3 id="active-book">📘 当前单词本：</h3>
