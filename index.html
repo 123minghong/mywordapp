@@ -1,170 +1,143 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="zh">
 <head>
-  <meta charset="utf-8">
-  <title>单词本</title>
-  <style>
-    /* 设置全局字体、背景和间距 */
-    body { font-family: sans-serif; margin: 2em; background: #f6f6f6; }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>云同步单词本</title>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, collection, doc, addDoc, getDocs, deleteDoc, onSnapshot, query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-    /* 输入框和按钮的基础样式 */
-    input, button { font-size: 16px; padding: 0.5em; margin: 0.25em; }
+    // Firebase 配置
+    const firebaseConfig = {
+      apiKey: "AIzaSyCpvG54UwNFw--aZxCOu1VBKNX-saQsgl0",
+      authDomain: "mywordapp-411d4.firebaseapp.com",
+      projectId: "mywordapp-411d4",
+      storageBucket: "mywordapp-411d4.firebasestorage.app",
+      messagingSenderId: "189418628590",
+      appId: "1:189418628590:web:80a13a63e35302db5fdaff"
+    };
 
-    /* 卡片容器样式 */
-    .card {
-      background: #fff;
-      border: 1px solid #ccc;
-      padding: 1em;
-      margin-top: 1em;
-      border-radius: 8px;
-      box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
-    }
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth();
 
-    /* 单词行样式（左侧单词，右侧发音按钮） */
-    .word-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
+    let userId = null;
+    let currentBookId = null;
 
-    /* 单词字体大小 */
-    .word-row h2 {
-      margin: 0;
-      font-size: 20px;
-    }
+    // 匿名登录
+    signInAnonymously(auth)
+      .catch(err => alert("登录失败：" + err.message));
 
-    /* 音标样式（灰色小字） */
-    .phonetic {
-      color: #888;
-      font-size: 14px;
-      margin: 0.2em 0 0.6em;
-    }
-
-    /* 段落间距 */
-    .card p {
-      margin: 0.4em 0;
-    }
-
-    /* 编辑与删除按钮样式 */
-    .actions button {
-      margin-right: 0.5em;
-      font-size: 14px;
-    }
-  </style>
-</head>
-
-<body>
-  <h1>📘 单词本</h1> <!-- 页面标题 -->
-
-  <!-- 添加单词区域 -->
-  <div>
-    <input id="word" placeholder="英文单词"> <!-- 英文输入框 -->
-    <input id="meaning" placeholder="中文释义"> <!-- 中文释义输入框 -->
-    <button onclick="handleAdd()">添加到单词本</button> <!-- 添加按钮 -->
-  </div>
-
-  <!-- 单词列表区域 -->
-  <div id="word-list"></div>
-
-  <script>
-    // 初始化全局单词数组，从 localStorage 中读取已有数据
-    let words = JSON.parse(localStorage.getItem('myWords')) || [];
-
-    // 处理“添加”按钮点击事件
-    async function handleAdd() {
-      const text = document.getElementById('word').value.trim();     // 获取英文单词
-      const meaning = document.getElementById('meaning').value.trim(); // 获取中文释义
-
-      if (!text || !meaning) return alert('请输入完整内容'); // 检查是否输入完整
-
-      const wordData = await fetchWordData(text); // 调用 API 获取音标和音频
-      if (!wordData) return alert('未找到音标数据'); // 如果没有数据，提示错误
-
-      // 创建新的单词对象
-      const entry = {
-        text,
-        meaning,
-        phonetic: wordData.phonetic,
-        audio: wordData.audio
-      };
-
-      words.push(entry); // 添加到数组
-      localStorage.setItem('myWords', JSON.stringify(words)); // 存入浏览器本地存储
-      renderWords(); // 重新渲染页面
-      document.getElementById('word').value = ''; // 清空输入框
-      document.getElementById('meaning').value = '';
-    }
-
-    // 调用 dictionaryapi 获取单词音标和发音
-    async function fetchWordData(word) {
-      try {
-        const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
-        const data = await res.json();
-
-        // 尝试获取音标字段（有些 API 返回的格式不同）
-        const phonetic = data[0].phonetic || (data[0].phonetics[0] || {}).text || '';
-
-        // 尝试获取第一个带音频的字段
-        const audio = (data[0].phonetics.find(p => p.audio) || {}).audio;
-
-        // 返回处理好的数据（补全https前缀）
-        return {
-          phonetic,
-          audio: audio?.startsWith('//') ? 'https:' + audio : audio
-        };
-      } catch {
-        return null; // 发生错误时返回 null
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        userId = user.uid;
+        document.getElementById("login-status").innerText = `用户已登录 (ID: ${userId.slice(0,6)}...)`;
+        loadWordbooks();
       }
-    }
+    });
 
-    // 渲染单词卡片列表
-    function renderWords() {
-      const list = document.getElementById('word-list'); // 获取展示区域
-      list.innerHTML = ''; // 清空原有内容
-
-      words.forEach((w, i) => {
-        const div = document.createElement('div'); // 创建一个 div 元素
-        div.className = 'card'; // 应用样式类名
-
-        // 拼接 HTML 结构，包含音标、释义、发音按钮、编辑删除按钮
-        div.innerHTML = `
-          <div class="word-row">
-            <h2>${w.text}</h2>
-            ${w.audio ? `
-              <button onclick="document.getElementById('audio-${i}').play()">🔊</button>
-              <audio id="audio-${i}" src="${w.audio}"></audio>
-            ` : ''}
-          </div>
-          <div class="phonetic">${w.phonetic || ''}</div>
-          <p>释义：<span id="meaning-${i}">${w.meaning}</span></p>
-          <div class="actions">
-            <button onclick="editMeaning(${i})">编辑</button>
-            <button onclick="deleteWord(${i})">删除</button>
-          </div>
-        `;
-        list.appendChild(div); // 添加到页面中
+    // 加载单词本列表
+    async function loadWordbooks() {
+      const q = query(collection(db, "users", userId, "wordbooks"));
+      const snap = await getDocs(q);
+      const list = document.getElementById("wordbook-list");
+      list.innerHTML = "";
+      snap.forEach(docSnap => {
+        const div = document.createElement("div");
+        div.innerHTML = `<button onclick="loadWords('${docSnap.id}', '${docSnap.data().name}')">📘 ${docSnap.data().name}</button>`;
+        list.appendChild(div);
       });
     }
 
-    // 删除某个单词
-    function deleteWord(index) {
-      if (!confirm("确定要删除这个单词吗？")) return; // 二次确认
-      words.splice(index, 1); // 从数组中移除
-      localStorage.setItem('myWords', JSON.stringify(words)); // 保存更新
-      renderWords(); // 重新渲染
+    // 创建新单词本
+    document.getElementById("createBookBtn").onclick = async () => {
+      const name = prompt("请输入单词本名称：");
+      if (!name) return;
+      await addDoc(collection(db, "users", userId, "wordbooks"), { name });
+      loadWordbooks();
     }
 
-    // 编辑释义
-    function editMeaning(index) {
-      const newMeaning = prompt("请输入新的释义：", words[index].meaning); // 弹出输入框
-      if (newMeaning) {
-        words[index].meaning = newMeaning.trim(); // 修改释义
-        localStorage.setItem('myWords', JSON.stringify(words)); // 保存到本地
-        renderWords(); // 刷新显示
-      }
+    // 加载单词列表
+    function loadWords(bookId, name) {
+      currentBookId = bookId;
+      document.getElementById("active-book").innerText = `📘 当前单词本：${name}`;
+      const list = document.getElementById("word-list");
+      list.innerHTML = "加载中...";
+      const q = collection(db, "users", userId, "wordbooks", bookId, "words");
+      onSnapshot(q, snap => {
+        list.innerHTML = "";
+        snap.forEach(docSnap => {
+          const w = docSnap.data();
+          const div = document.createElement("div");
+          div.className = "card";
+          div.innerHTML = `
+            <div style='display:flex;justify-content:space-between;'>
+              <b>${w.text}</b>
+              <button onclick="document.getElementById('a-${docSnap.id}').play()">🔊</button>
+              <audio id="a-${docSnap.id}" src="${w.audio}"></audio>
+            </div>
+            <div style='color:gray;'>${w.phonetic || ''}</div>
+            <div>释义：${w.meaning}</div>
+            <button onclick="deleteWord('${docSnap.id}')">删除</button>
+          `;
+          list.appendChild(div);
+        });
+      });
     }
 
-    renderWords(); // 页面加载时自动渲染已有单词
+    // 添加单词
+    document.getElementById("addBtn").onclick = async () => {
+      const word = document.getElementById("word").value.trim();
+      const meaning = document.getElementById("meaning").value.trim();
+      if (!word || !meaning || !currentBookId) return alert("请填写完整，并先选择一个单词本");
+      const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
+      const data = await res.json();
+      const phonetic = data[0].phonetic || (data[0].phonetics[0] || {}).text || '';
+      const audio = (data[0].phonetics.find(p => p.audio) || {}).audio || "";
+      await addDoc(collection(db, "users", userId, "wordbooks", currentBookId, "words"), {
+        text: word,
+        meaning,
+        phonetic,
+        audio: audio.startsWith('//') ? 'https:' + audio : audio
+      });
+      document.getElementById("word").value = "";
+      document.getElementById("meaning").value = "";
+    }
+
+    // 删除单词
+    window.deleteWord = async function(id) {
+      await deleteDoc(doc(db, "users", userId, "wordbooks", currentBookId, "words", id));
+    }
+
+    window.loadWords = loadWords;
   </script>
+  <style>
+    body { font-family: sans-serif; padding: 1em; background: #f6f6f6; }
+    .card {
+      background: white; margin: 0.5em 0; padding: 1em; border-radius: 8px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.1);
+    }
+    button { padding: 0.4em 1em; margin: 0.3em; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h2>🧠 我的单词本（云同步）</h2>
+  <p id="login-status">登录中...</p>
+
+  <div>
+    <h3>📂 我的单词本列表</h3>
+    <div id="wordbook-list"></div>
+    <button id="createBookBtn">➕ 新建单词本</button>
+  </div>
+
+  <hr>
+  <h3 id="active-book">📘 当前单词本：</h3>
+  <input id="word" placeholder="英文单词">
+  <input id="meaning" placeholder="中文释义">
+  <button id="addBtn">添加单词</button>
+
+  <div id="word-list"></div>
 </body>
 </html>
