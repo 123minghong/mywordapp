@@ -4,12 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>云同步单词本</title>
+  <style>
+    body { font-family: sans-serif; padding: 1em; background: #f6f6f6; }
+    .card {
+      background: white; margin: 0.5em 0; padding: 1em; border-radius: 8px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.1);
+    }
+    button { padding: 0.4em 1em; margin: 0.3em; font-size: 14px; }
+    #login-area { margin-bottom: 1em; }
+  </style>
+  <!-- 引入 Firebase SDK 模块 -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getFirestore, collection, doc, addDoc, getDocs, deleteDoc, onSnapshot, query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    import { getFirestore, collection, doc, addDoc, getDocs, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-    // Firebase 配置
+    // 🔧 Firebase 配置（你的项目参数）
     const firebaseConfig = {
       apiKey: "AIzaSyCpvG54UwNFw--aZxCOu1VBKNX-saQsgl0",
       authDomain: "mywordapp-411d4.firebaseapp.com",
@@ -19,29 +29,57 @@
       appId: "1:189418628590:web:80a13a63e35302db5fdaff"
     };
 
+    // 🚀 初始化 Firebase 服务
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const auth = getAuth();
+    const provider = new GoogleAuthProvider();
 
-    let userId = null;
-    let currentBookId = null;
+    let userId = null; // 当前用户 ID
+    let currentBookId = null; // 当前打开的单词本 ID
 
-    // 匿名登录
-    signInAnonymously(auth)
-      .catch(err => alert("登录失败：" + err.message));
-
+    // 👤 登录状态监听
     onAuthStateChanged(auth, async (user) => {
+      const status = document.getElementById("login-status");
+      const loginBtn = document.getElementById("loginBtn");
+      const logoutBtn = document.getElementById("logoutBtn");
+
       if (user) {
+        // 登录成功，显示用户信息
         userId = user.uid;
-        document.getElementById("login-status").innerText = `用户已登录 (ID: ${userId.slice(0,6)}...)`;
-        loadWordbooks();
+        status.innerText = `✅ 已登录：${user.displayName || user.email}`;
+        loginBtn.style.display = "none";
+        logoutBtn.style.display = "inline-block";
+        await loadWordbooks();
+      } else {
+        // 未登录状态
+        userId = null;
+        status.innerText = "❌ 未登录";
+        loginBtn.style.display = "inline-block";
+        logoutBtn.style.display = "none";
+        document.getElementById("wordbook-list").innerHTML = "";
+        document.getElementById("active-book").innerText = "📘 当前单词本：";
+        document.getElementById("word-list").innerHTML = "";
       }
     });
 
-    // 加载单词本列表
+    // 点击登录按钮
+    document.getElementById("loginBtn").onclick = async () => {
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (err) {
+        alert("登录失败：" + err.message);
+      }
+    };
+
+    // 点击登出按钮
+    document.getElementById("logoutBtn").onclick = () => {
+      signOut(auth);
+    };
+
+    // 加载当前用户所有单词本
     async function loadWordbooks() {
-      const q = query(collection(db, "users", userId, "wordbooks"));
-      const snap = await getDocs(q);
+      const snap = await getDocs(collection(db, "users", userId, "wordbooks"));
       const list = document.getElementById("wordbook-list");
       list.innerHTML = "";
       snap.forEach(docSnap => {
@@ -57,9 +95,9 @@
       if (!name) return;
       await addDoc(collection(db, "users", userId, "wordbooks"), { name });
       loadWordbooks();
-    }
+    };
 
-    // 加载单词列表
+    // 加载某个单词本内的所有单词（实时同步）
     function loadWords(bookId, name) {
       currentBookId = bookId;
       document.getElementById("active-book").innerText = `📘 当前单词本：${name}`;
@@ -91,7 +129,7 @@
     document.getElementById("addBtn").onclick = async () => {
       const word = document.getElementById("word").value.trim();
       const meaning = document.getElementById("meaning").value.trim();
-      if (!word || !meaning || !currentBookId) return alert("请填写完整，并先选择一个单词本");
+      if (!word || !meaning || !currentBookId) return alert("请填写完整，并选择单词本");
       const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
       const data = await res.json();
       const phonetic = data[0].phonetic || (data[0].phonetics[0] || {}).text || '';
@@ -104,35 +142,37 @@
       });
       document.getElementById("word").value = "";
       document.getElementById("meaning").value = "";
-    }
+    };
 
     // 删除单词
     window.deleteWord = async function(id) {
       await deleteDoc(doc(db, "users", userId, "wordbooks", currentBookId, "words", id));
     }
 
+    // 暴露函数供 HTML 使用
     window.loadWords = loadWords;
   </script>
-  <style>
-    body { font-family: sans-serif; padding: 1em; background: #f6f6f6; }
-    .card {
-      background: white; margin: 0.5em 0; padding: 1em; border-radius: 8px;
-      box-shadow: 0 1px 5px rgba(0,0,0,0.1);
-    }
-    button { padding: 0.4em 1em; margin: 0.3em; font-size: 14px; }
-  </style>
 </head>
 <body>
-  <h2>🧠 我的单词本（云同步）</h2>
-  <p id="login-status">登录中...</p>
+  <h2>🧠 我的单词本（Google 登录 + 云同步）</h2>
 
+  <!-- 🔐 登录区域 -->
+  <div id="login-area">
+    <p id="login-status">登录检测中...</p>
+    <button id="loginBtn">使用 Google 登录</button>
+    <button id="logoutBtn" style="display:none">登出</button>
+  </div>
+
+  <!-- 📂 单词本列表区域 -->
   <div>
-    <h3>📂 我的单词本列表</h3>
+    <h3>📁 我的单词本</h3>
     <div id="wordbook-list"></div>
-    <button id="createBookBtn">➕ 新建单词本</button>
+    <button id="createBookBtn">➕ 创建新单词本</button>
   </div>
 
   <hr>
+
+  <!-- 📚 当前单词本内容区域 -->
   <h3 id="active-book">📘 当前单词本：</h3>
   <input id="word" placeholder="英文单词">
   <input id="meaning" placeholder="中文释义">
