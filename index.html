@@ -151,23 +151,36 @@
 
     document.getElementById("addBtn").onclick = async () => {
       const word = document.getElementById("word").value.trim();
-      const meaning = document.getElementById("meaning").value.trim();
-      if (!word || !meaning || !currentBookId) return alert("请填写完整，并选择单词本");
+      let meaning = document.getElementById("meaning").value.trim();
+      if (!word || !currentBookId) return alert("请填写完整，并选择单词本");
 
       let phonetic = '';
       let audio = '';
 
+      // 先尝试获取音标和发音（仍用 dictionaryapi.dev）
       try {
         const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
-        if (!res.ok) throw new Error("词典查询失败");
-        const data = await res.json();
-        phonetic = data[0].phonetic || (data[0].phonetics[0] || {}).text || '';
-        audio = (data[0].phonetics.find(p => p.audio) || {}).audio || '';
-        if (!phonetic && !audio) {
-          alert("⚠️ 获取不到音标和发音，仍将保存单词");
+        if (res.ok) {
+          const data = await res.json();
+          phonetic = data[0].phonetic || (data[0].phonetics[0] || {}).text || '';
+          audio = (data[0].phonetics.find(p => p.audio) || {}).audio || '';
         }
       } catch (err) {
-        alert("⚠️ 查询词典失败，可能拼写错误或网络问题，仍将保存单词");
+        // 忽略音标和发音错误
+      }
+
+      // 如果释义没填，自动用有道API获取中文释义
+      if (!meaning) {
+        try {
+          const ydRes = await fetch(`https://dict.youdao.com/jsonapi?jsonversion=2&q=${encodeURIComponent(word)}&dicts={"count":99,"dicts":[["ec"]]}&client=web`);
+          if (!ydRes.ok) throw new Error("有道API查询失败");
+          const ydData = await ydRes.json();
+          // 取有道英中词典首条释义
+          meaning = ydData.ec?.word?.[0]?.trs?.[0]?.tr?.[0]?.l?.i?.[0] || '';
+          if (!meaning) meaning = "（未找到中文释义）";
+        } catch (err) {
+          meaning = "（未找到中文释义）";
+        }
       }
 
       await addDoc(collection(db, "users", userId, "wordbooks", currentBookId, "words"), {
@@ -234,6 +247,15 @@
       document.getElementById("pagination-controls").style.display = allWords.length > perPage ? "block" : "none";
     }
     window.loadWords = loadWords;
+
+    // 让输入框支持回车快捷添加单词
+    ["word", "meaning"].forEach(id => {
+      document.getElementById(id).addEventListener("keydown", function(e) {
+        if (e.key === "Enter") {
+          document.getElementById("addBtn").click();
+        }
+      });
+    });
   </script>
 </head>
 <body>
